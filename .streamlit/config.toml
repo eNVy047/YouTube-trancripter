@@ -1,0 +1,11 @@
+[server]
+headless = true
+port = 10000
+enableXsrfProtection = true
+enableCORS = true
+
+[logger]
+level = "info"
+
+[client]
+toolbarMode = "viewer"
