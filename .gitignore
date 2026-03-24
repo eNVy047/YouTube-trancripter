@@ -1,0 +1,15 @@
+# Local Python environment
+venv/
+kaggle/
+model/
+train-code/
+
+# Generated runtime output
+downloads/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
