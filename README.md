@@ -30,7 +30,6 @@ The app will open in your browser and show a field where you can paste a YouTube
 
 - Click **Download Audio** after entering a valid YouTube URL.
 - Downloaded files are saved under `downloads/audio/` in this project folder.
-- If YouTube download is blocked (HTTP 403 on Streamlit Cloud), use **Fallback: Upload Audio** on Home page.
 
 ## Speech-to-text output
 
@@ -41,21 +40,6 @@ The app will open in your browser and show a field where you can paste a YouTube
 - The page shows a **Resulting Text** heading with the transcript and a **Copy Text** button.
 - The **Generated Text** page lists `.txt` transcript files and opens the selected one for reading and copying.
 - Transcript files are retained for 1 day, then deleted automatically by app cleanup.
-
-## Cloudinary storage
-
-The app supports Cloudinary for generated assets:
-
-- Audio file is uploaded to Cloudinary and deleted immediately after transcription completes.
-- Transcript `.txt` is uploaded to Cloudinary and auto-deleted after 1 day.
-- Local transcript retention remains 1 day.
-- **Generated Text** page shows a **Cloudinary Transcripts** section where you can list and download all transcripts stored on Cloudinary.
-
-Set these secrets in Streamlit deployment settings or environment variables:
-
-- `CLOUDINARY_CLOUD_NAME`
-- `CLOUDINARY_API_KEY`
-- `CLOUDINARY_API_SECRET`
 
 ## Deployment note
 
