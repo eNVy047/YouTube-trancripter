@@ -1,6 +1,8 @@
 import shutil
 import time
+from io import BytesIO
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import streamlit as st
 import yt_dlp
@@ -130,6 +132,17 @@ def count_transcripts(folder_path: Path) -> int:
     return len(list(folder_path.glob("*.txt")))
 
 
+def build_playlist_zip(folder_path: Path) -> bytes:
+    """Build an in-memory zip containing all transcript files in playlist folder."""
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as zip_file:
+        for transcript_file in sorted(folder_path.glob("*.txt")):
+            archive_name = f"{folder_path.name}/{transcript_file.name}"
+            zip_file.write(transcript_file, archive_name)
+    buffer.seek(0)
+    return buffer.read()
+
+
 st.set_page_config(page_title="Playlist Transcriber | YouTube to Text", page_icon="📹", layout="centered")
 
 st.title("📹 YouTube Playlist Transcriber")
@@ -183,6 +196,7 @@ with tab1:
         playlist_folder_name = sanitize_filename(st.session_state.playlist_title)
         playlist_folder = playlists_dir / playlist_folder_name
         playlist_folder.mkdir(parents=True, exist_ok=True)
+        playlist_temp_root = Path("temp_audio") / playlist_folder_name
 
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -195,6 +209,7 @@ with tab1:
         with results_container:
             with st.spinner("Processing videos..."):
                 for idx, video_url in enumerate(st.session_state.playlist_urls, 1):
+                    temp_audio_dir = playlist_temp_root / f"video_{idx}"
                     try:
                         # Get video title
                         status_text.text(f"Fetching video {idx}/{total_videos}...")
@@ -203,7 +218,6 @@ with tab1:
 
                         # Download audio
                         status_text.text(f"[{idx}/{total_videos}] Downloading: {safe_title[:50]}...")
-                        temp_audio_dir = Path("temp_audio") / f"video_{idx}"
                         audio_file = download_audio(video_url, temp_audio_dir)
 
                         # Transcribe audio
@@ -215,18 +229,17 @@ with tab1:
                         transcript_path = playlist_folder / transcript_filename
                         transcript_path.write_text(transcript_text, encoding="utf-8")
 
-                        # Clean up audio file
-                        try:
-                            audio_file.unlink()
-                        except:
-                            pass
-
                         successful += 1
                         st.success(f"✓ {transcript_filename}")
 
                     except Exception as e:
                         failed += 1
                         st.error(f"✗ Video {idx}: {str(e)[:100]}")
+
+                    finally:
+                        # Remove per-video temporary audio directory after each run.
+                        if temp_audio_dir.exists() and temp_audio_dir.is_dir():
+                            shutil.rmtree(temp_audio_dir, ignore_errors=True)
 
                     # Update progress
                     progress = (idx / total_videos)
@@ -241,6 +254,9 @@ with tab1:
         col3.metric("✗ Failed", failed)
 
         st.info(f"📁 All transcripts saved to: `playlists/{playlist_folder_name}/`")
+
+        if playlist_temp_root.exists() and playlist_temp_root.is_dir():
+            shutil.rmtree(playlist_temp_root, ignore_errors=True)
 
         # Reset state
         st.session_state.start_transcription = False
@@ -258,7 +274,7 @@ with tab2:
         st.markdown("---")
 
         for playlist_path in playlists:
-            col1, col2, col3 = st.columns([2, 1, 1])
+            col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 
             with col1:
                 num_transcripts = count_transcripts(playlist_path)
@@ -275,6 +291,21 @@ with tab2:
                             st.write(f"- {file.name}")
 
             with col3:
+                transcripts_count = count_transcripts(playlist_path)
+                if transcripts_count > 0:
+                    zip_data = build_playlist_zip(playlist_path)
+                    st.download_button(
+                        "⬇️ ZIP",
+                        data=zip_data,
+                        file_name=f"{playlist_path.name}.zip",
+                        mime="application/zip",
+                        key=f"download_{playlist_path.name}",
+                        use_container_width=True,
+                    )
+                else:
+                    st.button("⬇️ ZIP", key=f"download_disabled_{playlist_path.name}", disabled=True, use_container_width=True)
+
+            with col4:
                 if st.button("🗑️ Delete", key=f"delete_{playlist_path.name}", use_container_width=True):
                     with st.spinner(f"Deleting {playlist_path.name}..."):
                         if delete_playlist_folder(playlist_path):
