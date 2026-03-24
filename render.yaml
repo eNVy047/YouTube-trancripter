@@ -3,7 +3,7 @@ services:
     name: youtube-transcriber
     env: python
     plan: standard
-    pythonVersion: 3.11
+    pythonVersion: 3.11.9
     buildCommand: bash build.sh && pip install -r requirements.txt
     startCommand: streamlit run app.py --server.port=10000 --server.address=0.0.0.0
     envVars:
