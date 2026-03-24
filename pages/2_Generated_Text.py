@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -132,6 +133,15 @@ def cleanup_cloudinary_transcripts(base_dir: Path, retention_hours: int = 24) ->
     return deleted_count
 
 
+def list_cloudinary_transcripts() -> list[dict]:
+    """Fetch all transcript files from Cloudinary youtube_transcriber/transcripts folder."""
+    try:
+        result = cloudinary.api.resources(type="upload", prefix="youtube_transcriber/transcripts", max_results=100)
+        return result.get("resources", [])
+    except Exception:
+        return []
+
+
 def render_copy_button(text: str, button_id: str) -> None:
     """Render a browser-side copy button for transcript text."""
     js_text = json.dumps(text)
@@ -203,3 +213,33 @@ else:
             file_name=selected_path.name,
             mime="text/plain",
         )
+
+if cloudinary_ready:
+    st.divider()
+    st.subheader("Cloudinary Transcripts")
+    st.caption("Transcripts stored and managed on Cloudinary.")
+
+    cloudinary_files = list_cloudinary_transcripts()
+    if cloudinary_files:
+        file_dict = {f["public_id"]: f["secure_url"] for f in cloudinary_files}
+        selected_public_id = st.selectbox(
+            "Select Cloudinary transcript",
+            options=list(file_dict.keys()),
+            key="cloudinary-select",
+        )
+
+        if selected_public_id:
+            secure_url = file_dict[selected_public_id]
+            try:
+                response = cloudinary.api.resource(selected_public_id, type="upload")
+                st.info(
+                    f"File: {response.get('public_id')}\n"
+                    f"Size: {response.get('bytes', 0)} bytes\n"
+                    f"Uploaded: {response.get('created_at', 'N/A')}"
+                )
+            except Exception:
+                pass
+
+            st.markdown(f"[Download from Cloudinary]({secure_url})")
+    else:
+        st.info("No transcripts on Cloudinary yet.")

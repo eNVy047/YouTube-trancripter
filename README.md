@@ -49,6 +49,7 @@ The app supports Cloudinary for generated assets:
 - Audio file is uploaded to Cloudinary and deleted immediately after transcription completes.
 - Transcript `.txt` is uploaded to Cloudinary and auto-deleted after 1 day.
 - Local transcript retention remains 1 day.
+- **Generated Text** page shows a **Cloudinary Transcripts** section where you can list and download all transcripts stored on Cloudinary.
 
 Set these secrets in Streamlit deployment settings or environment variables:
 

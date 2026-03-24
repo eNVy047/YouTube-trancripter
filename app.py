@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 import streamlit as st
 import streamlit.components.v1 as components
 import yt_dlp
