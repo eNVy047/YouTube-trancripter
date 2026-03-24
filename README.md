@@ -49,74 +49,44 @@ This setup is server-friendly because it runs fully local inference with Faster-
 
 **Note:** If you deploy on Streamlit Community Cloud, YouTube downloads may fail with HTTP 403 due to shared cloud IP restrictions.
 
-### Deploy on Render
+### Deploy on Colify (Coolify)
 
-Render provides a reliable hosting platform with good performance for this application.
+Colify works best with this app using Docker deployment.
 
 #### Prerequisites
-- Render account (free tier available)
+- Colify/Coolify server access
 - GitHub repository with your code
-- `render.yaml` configuration file
+- A persistent volume mounted to `/app/data` if you want transcript files to survive restarts
 
 #### Steps
 
-1. **Create `render.yaml` in your project root:**
-
-```yaml
-services:
-  - type: web
-    name: youtube-transcriber
-    env: python
-    plan: standard
-    pythonVersion: 3.11
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port=10000 --server.address=0.0.0.0
-    envVars:
-      - key: STREAMLIT_SERVER_HEADLESS
-        value: true
-```
-
-2. **Create `.streamlit/config.toml` for Render:**
-
-```toml
-[server]
-headless = true
-port = 10000
-enableXsrfProtection = true
-enableCORS = true
-
-[logger]
-level = "info"
-
-[client]
-toolbarMode = "viewer"
-```
-
-3. **Push to GitHub:**
+1. **Push your code to GitHub:**
 
 ```bash
 git add .
-git commit -m "Add Render deployment config"
+git commit -m "Add Colify deployment setup"
 git push
 ```
 
-4. **Deploy on Render:**
-   - Go to [render.com](https://render.com)
-   - Connect your GitHub repository
-   - Click "New +" → "Web Service"
-   - Select your repository
-   - Render will auto-detect and use `render.yaml`
-   - Click "Create Web Service"
+2. **Create a new application in Colify:**
+  - Choose **Public Repository** or **Private Repository**
+  - Select **Dockerfile** as the build method
+  - Set container port to `8501`
 
-5. **Monitor deployment:**
-   - Check logs in Render dashboard
-   - Service will be live at: `https://youtube-transcriber-xxxxx.onrender.com`
+3. **Set environment variables in Colify:**
+  - `STREAMLIT_SERVER_HEADLESS=true`
+  - `PYTHONUNBUFFERED=true`
+
+4. **(Recommended) Add a persistent volume:**
+  - Mount a volume to `/app/data`
+  - This keeps generated transcript files after container restart/redeploy
+
+5. **Deploy and open your app:**
+  - Trigger deployment from Colify dashboard
+  - Open your generated app URL after health check passes
 
 #### Notes
-- **Storage:** Transcripts are saved in `/tmp` on Render (ephemeral). For permanent storage, consider adding:
-  - AWS S3 integration
-  - Render Disks (paid feature)
-  - External database
-- **Performance:** May need to upgrade plan for large playlists (100+ videos)
-- **Memory:** Standard tier (512MB) may struggle with `small`/`medium` Whisper models; use `tiny` or `base` instead
+- **Storage:** Without a persistent volume, files are temporary and can be lost on redeploy.
+- **Performance:** For large playlists, allocate more CPU/RAM in Colify.
+- **Memory:** If RAM is limited, use `tiny` or `base` Whisper model.
 
