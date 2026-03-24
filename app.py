@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 import yt_dlp
 from faster_whisper import WhisperModel
+from yt_dlp.utils import DownloadError
 
 
 def is_valid_youtube_url(url: str) -> bool:
@@ -32,13 +33,29 @@ def download_audio(url: str, output_dir: Path) -> Path:
         "format": "bestaudio/best",
         "noplaylist": True,
         "outtmpl": str(output_dir / "%(title).120s-%(id)s.%(ext)s"),
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "retries": 5,
+        "fragment_retries": 5,
+        "extractor_retries": 3,
+        "geo_bypass": True,
         "quiet": True,
         "no_warnings": True,
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        file_path = Path(ydl.prepare_filename(info))
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            file_path = Path(ydl.prepare_filename(info))
+    except DownloadError as exc:
+        raise RuntimeError(str(exc)) from exc
 
     return file_path
 
@@ -154,10 +171,17 @@ if youtube_url:
                     saved_file = download_audio(youtube_url, downloads_dir)
                 except Exception as exc:
                     st.error(f"Audio download failed: {exc}")
+                    if "HTTP Error 403" in str(exc):
+                        st.info(
+                            "YouTube blocked this server IP/session. This is common on Streamlit Cloud. "
+                            "Try redeploying on your own VPS/server, or use a different network/server region."
+                        )
                 else:
                     st.success("Audio downloaded successfully.")
                     st.write(f"Saved to: {saved_file}")
                     st.session_state.last_audio_path = str(saved_file)
+    else:
+        st.error("Please enter a valid YouTube URL.")
 
     if st.session_state.last_audio_path:
         audio_file = Path(st.session_state.last_audio_path)
@@ -193,5 +217,3 @@ if youtube_url:
                         file_name=transcript_file.name,
                         mime="text/plain",
                     )
-    else:
-        st.error("Please enter a valid YouTube URL.")

@@ -45,3 +45,5 @@ The app will open in your browser and show a field where you can paste a YouTube
 
 This setup is server-friendly because it runs fully local inference with Faster-Whisper and does not rely on external speech APIs.
 
+If you deploy on Streamlit Community Cloud, YouTube downloads may fail with HTTP 403 due to shared cloud IP restrictions. For stable downloads, deploy on your own VPS/server.
+
