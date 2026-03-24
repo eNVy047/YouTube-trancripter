@@ -42,6 +42,20 @@ The app will open in your browser and show a field where you can paste a YouTube
 - The **Generated Text** page lists `.txt` transcript files and opens the selected one for reading and copying.
 - Transcript files are retained for 1 day, then deleted automatically by app cleanup.
 
+## Cloudinary storage
+
+The app supports Cloudinary for generated assets:
+
+- Audio file is uploaded to Cloudinary and deleted immediately after transcription completes.
+- Transcript `.txt` is uploaded to Cloudinary and auto-deleted after 1 day.
+- Local transcript retention remains 1 day.
+
+Set these secrets in Streamlit deployment settings or environment variables:
+
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+
 ## Deployment note
 
 This setup is server-friendly because it runs fully local inference with Faster-Whisper and does not rely on external speech APIs.

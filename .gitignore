@@ -3,6 +3,7 @@ venv/
 kaggle/
 model/
 train-code/
+.streamlit/secrets.toml
 
 # Generated runtime output
 downloads/

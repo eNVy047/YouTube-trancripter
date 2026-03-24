@@ -1,10 +1,13 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import time
+import os
 import json
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
+import cloudinary
+import cloudinary.uploader
+import streamlit as st
+import streamlit.components.v1 as components
 import yt_dlp
 from faster_whisper import WhisperModel
 from yt_dlp.utils import DownloadError
@@ -67,6 +70,127 @@ def save_uploaded_audio(uploaded_file, output_dir: Path) -> Path:
     destination = output_dir / safe_name
     destination.write_bytes(uploaded_file.getbuffer())
     return destination
+
+
+def read_secret(name: str) -> str:
+    """Read a value from environment first, then Streamlit secrets."""
+    env_value = os.getenv(name)
+    if env_value:
+        return env_value
+
+    try:
+        if name in st.secrets:
+            return str(st.secrets[name])
+    except (FileNotFoundError, KeyError):
+        pass
+
+    return ""
+
+
+def configure_cloudinary() -> bool:
+    """Configure Cloudinary SDK and return True when credentials are available."""
+    cloud_name = read_secret("CLOUDINARY_CLOUD_NAME")
+    api_key = read_secret("CLOUDINARY_API_KEY")
+    api_secret = read_secret("CLOUDINARY_API_SECRET")
+
+    if not (cloud_name and api_key and api_secret):
+        return False
+
+    cloudinary.config(
+        cloud_name=cloud_name,
+        api_key=api_key,
+        api_secret=api_secret,
+        secure=True,
+    )
+    return True
+
+
+def tracker_file_path(base_dir: Path) -> Path:
+    """Location for Cloudinary transcript retention tracker."""
+    return base_dir / "cloudinary_transcript_tracker.json"
+
+
+def load_tracker(path: Path) -> dict:
+    """Load Cloudinary tracker JSON from disk."""
+    if not path.exists():
+        return {"transcripts": []}
+
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"transcripts": []}
+
+
+def save_tracker(path: Path, data: dict) -> None:
+    """Persist Cloudinary tracker JSON to disk."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+def upload_file_to_cloudinary(file_path: Path, folder: str, resource_type: str) -> dict:
+    """Upload a file to Cloudinary and return upload response."""
+    return cloudinary.uploader.upload(
+        str(file_path),
+        folder=folder,
+        resource_type=resource_type,
+        use_filename=True,
+        unique_filename=True,
+        overwrite=False,
+    )
+
+
+def delete_cloudinary_asset(public_id: str, resource_type: str) -> bool:
+    """Delete a Cloudinary asset by public_id and type."""
+    try:
+        response = cloudinary.uploader.destroy(public_id, resource_type=resource_type)
+    except Exception:
+        return False
+
+    return response.get("result") in {"ok", "not found"}
+
+
+def cleanup_cloudinary_transcripts(base_dir: Path, retention_hours: int = 24) -> int:
+    """Delete Cloudinary transcript assets older than retention period."""
+    tracker_path = tracker_file_path(base_dir)
+    tracker = load_tracker(tracker_path)
+    now_ts = time.time()
+    threshold_ts = now_ts - (retention_hours * 3600)
+
+    kept = []
+    deleted_count = 0
+
+    for item in tracker.get("transcripts", []):
+        uploaded_at = float(item.get("uploaded_at", 0))
+        public_id = item.get("public_id", "")
+        resource_type = item.get("resource_type", "raw")
+
+        if not public_id:
+            continue
+
+        if uploaded_at < threshold_ts:
+            if delete_cloudinary_asset(public_id, resource_type=resource_type):
+                deleted_count += 1
+            continue
+
+        kept.append(item)
+
+    tracker["transcripts"] = kept
+    save_tracker(tracker_path, tracker)
+    return deleted_count
+
+
+def record_cloudinary_transcript(base_dir: Path, public_id: str, resource_type: str) -> None:
+    """Record transcript Cloudinary asset for delayed deletion."""
+    tracker_path = tracker_file_path(base_dir)
+    tracker = load_tracker(tracker_path)
+    tracker.setdefault("transcripts", []).append(
+        {
+            "public_id": public_id,
+            "resource_type": resource_type,
+            "uploaded_at": time.time(),
+        }
+    )
+    save_tracker(tracker_path, tracker)
 
 
 @st.cache_resource(show_spinner=False)
@@ -158,11 +282,24 @@ st.caption("Use the Generated Text page from the left sidebar to view saved tran
 youtube_url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
 downloads_dir = Path("downloads") / "audio"
 transcripts_dir = Path("downloads") / "transcripts"
+metadata_dir = Path("downloads") / "metadata"
 model_size = st.selectbox("Whisper model size", options=["tiny", "base", "small"], index=1)
+
+cloudinary_ready = configure_cloudinary()
+if not cloudinary_ready:
+    st.warning(
+        "Cloudinary credentials are missing. Set CLOUDINARY_CLOUD_NAME, "
+        "CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET in environment or Streamlit secrets."
+    )
 
 deleted_transcripts = cleanup_old_transcripts(transcripts_dir, max_age_hours=24)
 if deleted_transcripts > 0:
-    st.info(f"Auto-cleanup removed {deleted_transcripts} old transcript file(s).")
+    st.info(f"Auto-cleanup removed {deleted_transcripts} old local transcript file(s).")
+
+if cloudinary_ready:
+    deleted_cloud_files = cleanup_cloudinary_transcripts(metadata_dir, retention_hours=24)
+    if deleted_cloud_files > 0:
+        st.info(f"Auto-cleanup removed {deleted_cloud_files} old Cloudinary transcript file(s).")
 
 st.caption("Transcript files are kept for 1 day and then deleted automatically.")
 
@@ -216,6 +353,37 @@ if youtube_url:
                     st.subheader("Resulting Text")
                     st.text_area("Result", transcript_text, height=280)
                     render_copy_button(transcript_text, button_id="copy-new-transcript")
+
+                    if cloudinary_ready:
+                        try:
+                            audio_upload = upload_file_to_cloudinary(
+                                audio_file,
+                                folder="youtube_transcriber/audio",
+                                resource_type="video",
+                            )
+                            transcript_upload = upload_file_to_cloudinary(
+                                transcript_file,
+                                folder="youtube_transcriber/transcripts",
+                                resource_type="raw",
+                            )
+
+                            audio_public_id = audio_upload.get("public_id", "")
+                            transcript_public_id = transcript_upload.get("public_id", "")
+
+                            if audio_public_id:
+                                if delete_cloudinary_asset(audio_public_id, resource_type="video"):
+                                    st.info("Cloudinary audio file deleted after task completion.")
+                                else:
+                                    st.warning("Cloudinary audio upload succeeded, but delete failed.")
+
+                            if transcript_public_id:
+                                record_cloudinary_transcript(
+                                    metadata_dir,
+                                    public_id=transcript_public_id,
+                                    resource_type="raw",
+                                )
+                        except Exception as exc:
+                            st.warning(f"Cloudinary upload/delete issue: {exc}")
 
                     if delete_audio_file(audio_file):
                         st.info("Source audio file deleted after transcription.")
