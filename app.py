@@ -60,6 +60,15 @@ def download_audio(url: str, output_dir: Path) -> Path:
     return file_path
 
 
+def save_uploaded_audio(uploaded_file, output_dir: Path) -> Path:
+    """Persist uploaded audio to local storage and return file path."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(uploaded_file.name).name
+    destination = output_dir / safe_name
+    destination.write_bytes(uploaded_file.getbuffer())
+    return destination
+
+
 @st.cache_resource(show_spinner=False)
 def load_stt_model(model_size: str) -> WhisperModel:
     """Load and cache a local Faster-Whisper model for CPU inference."""
@@ -160,6 +169,9 @@ st.caption("Transcript files are kept for 1 day and then deleted automatically."
 if "last_audio_path" not in st.session_state:
     st.session_state.last_audio_path = ""
 
+if "last_audio_source" not in st.session_state:
+    st.session_state.last_audio_source = ""
+
 if youtube_url:
     if is_valid_youtube_url(youtube_url):
         st.success("Valid YouTube URL received.")
@@ -180,6 +192,7 @@ if youtube_url:
                     st.success("Audio downloaded successfully.")
                     st.write(f"Saved to: {saved_file}")
                     st.session_state.last_audio_path = str(saved_file)
+                    st.session_state.last_audio_source = "youtube"
     else:
         st.error("Please enter a valid YouTube URL.")
 
@@ -210,6 +223,7 @@ if youtube_url:
                         st.warning("Transcript saved, but audio file could not be deleted.")
 
                     st.session_state.last_audio_path = ""
+                    st.session_state.last_audio_source = ""
 
                     st.download_button(
                         label="Download Transcript (.txt)",
@@ -217,3 +231,23 @@ if youtube_url:
                         file_name=transcript_file.name,
                         mime="text/plain",
                     )
+
+st.divider()
+st.subheader("Fallback: Upload Audio")
+st.caption("Use this when YouTube download is blocked on Streamlit Cloud.")
+
+uploaded_audio = st.file_uploader(
+    "Upload audio file",
+    type=["mp3", "wav", "m4a", "webm", "aac", "ogg", "flac", "mp4"],
+)
+
+if uploaded_audio and st.button("Use Uploaded Audio"):
+    try:
+        uploaded_path = save_uploaded_audio(uploaded_audio, downloads_dir)
+    except Exception as exc:
+        st.error(f"Could not save uploaded audio: {exc}")
+    else:
+        st.success("Uploaded audio is ready.")
+        st.write(f"Saved to: {uploaded_path}")
+        st.session_state.last_audio_path = str(uploaded_path)
+        st.session_state.last_audio_source = "upload"

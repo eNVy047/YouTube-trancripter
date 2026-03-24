@@ -30,6 +30,7 @@ The app will open in your browser and show a field where you can paste a YouTube
 
 - Click **Download Audio** after entering a valid YouTube URL.
 - Downloaded files are saved under `downloads/audio/` in this project folder.
+- If YouTube download is blocked (HTTP 403 on Streamlit Cloud), use **Fallback: Upload Audio** on Home page.
 
 ## Speech-to-text output
 
